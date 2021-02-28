@@ -128,10 +128,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DisplayPixel.cs" />
     <Compile Include="VirtualDisplayPlugin.cs" />
-    <Compile Include="MatricesData.cs" />
-    <Compile Include="Matrix.cs" />
-    <Compile Include="PluginSettings.cs" />
     <Compile Include="xScheduleWrapper.cs" />
     <Compile Include="StatusForm.cs">
       <SubType>Form</SubType>
@@ -148,7 +146,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
-    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <ImportGroup Label=".NET DllExport">

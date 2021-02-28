@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using xScheduleWrapper;
 using System.Drawing;
 using System.Windows.Forms;
+using System.IO;
 
 namespace VirtualDisplayPlugin
 {
@@ -18,12 +19,12 @@ namespace VirtualDisplayPlugin
 
 		bool _outputing = false;
 
-		public int _panelWidth = 0;
-		public int _panelHeight = 0;
+		int _pictureWidth = 0;
+		int _pictureHeight = 0;
+		List<DisplayPixel> _nodes = new List<DisplayPixel>();
+		
 
 		public string _showDir = "";
-
-		void OnSendError(string errorString) => SendError.Invoke(this, errorString);
 
 		void OnReloadDimensions() => SendReloadDimensions.Invoke(this, null);
 
@@ -65,10 +66,6 @@ namespace VirtualDisplayPlugin
 
 			_form = new StatusForm(this);
 
-			SendError += _form.StatusFormMeasage;
-			SendReloadDimensions += _form.ReloadStatusBox;
-			_form.ReloadSettings += Reload_Setting;
-
 			ReadSetting();
 
 			_form.Show();
@@ -102,51 +99,47 @@ namespace VirtualDisplayPlugin
 		}
 
 		/// <summary>
-		/// read the setting XML file from the show directory
+		/// read the virtualdisplaymap file from the show directory
 		/// </summary>
 		private bool ReadSetting()
 		{
-			PluginSettings setting = new PluginSettings(_showDir);
-			_selectedOutput = setting.EthernetOutput;
-			_selectedMatrix = setting.MatrixName;
-			_brightness = setting.Brightness;
-
-			if (_brightness == 0)
+			var path = _showDir + "//virtualdisplaymap";
+			if (!System.IO.File.Exists(path))
+				return false;
+			_nodes.Clear();
+			using (var rd = new StreamReader(path))
 			{
-				_brightness = 100;
-			}
-
-			for (int i = 0; i != _allDevices.Count; ++i)
-			{
-				LivePacketDevice device = _allDevices[i];
-				if (device.Name == _selectedOutput)
+				while (!rd.EndOfStream)
 				{
-					_intSelectOutput = i;
-					break;
+					var splits = rd.ReadLine().Split(',');
+					if (splits.Length == 5)
+					{
+						try
+						{
+							int x = Convert.ToInt32(splits[0]);
+							int y = Convert.ToInt32(splits[1]);
+							if (x > _pictureWidth)
+							{
+								_pictureWidth = x + 1;
+							}
+
+							if (y > _pictureHeight)
+							{
+								_pictureHeight = y + 1;
+							}
+							_nodes.Append(new DisplayPixel
+							{
+								X = x,
+								Y = y,
+								Chan = Convert.ToInt32(splits[2]),
+								PixelChan = Convert.ToByte(splits[3]),
+								ColorOrder = splits[4]
+							});
+						}
+						catch (Exception e)
+						{ }
+					}
 				}
-			}
-
-			if (_intSelectOutput == -1)
-			{
-				OnSendError("Ethernet Ouput not found");
-				return false;
-			}
-
-			string result;
-			xSchedule_Action("GetMatrix", _selectedMatrix, "", out result);
-
-			Matrix settings = JsonConvert.DeserializeObject<Matrix>(result);
-			if (!string.IsNullOrEmpty(settings.name))
-			{
-				_panelWidth = int.Parse(settings.width);
-				_panelHeight = int.Parse(settings.height);
-				_startChannel = int.Parse(settings.startchannel);
-				OnReloadDimensions();
-			}
-			else
-			{
-				OnSendError(_selectedMatrix + " Matrix not found");
-				return false;
 			}
 
 			return true;
@@ -176,46 +169,108 @@ namespace VirtualDisplayPlugin
 			_outputing = true;
 			try
 			{
-				if (_intSelectOutput == -1)
+				if (_pictureWidth == 0 || _pictureHeight == 0)
 				{
-					OnSendError("No Ethernet Output Setup, Skipping Output");
+					_outputing = false;
 					return;
 				}
-
-				if (_startChannel == -1)
+				
+				Bitmap display = new Bitmap(_pictureWidth, _pictureHeight);
+				foreach (var node in _nodes)
 				{
-					OnSendError("No Matrix Set, Skipping Output");
-					return;
+					Color color = getPixelColor(node, buffer);
+					display.SetPixel(node.X, node.Y, color);
 				}
-				PacketDevice selectedDevice = _allDevices[_intSelectOutput];
-				using (PacketCommunicator communicator = selectedDevice.Open(100, // name of the device
-																		 PacketDeviceOpenAttributes.Promiscuous, // promiscuous mode
-																		 100)) // read timeout
-				{
-					MacAddress source = new MacAddress("22:22:33:44:55:66");
 
-					// set mac destination to 02:02:02:02:02:02
-					MacAddress destination = new MacAddress("11:22:33:44:55:66");
+				_form.SetDisplayImage(display);
+				//OnSendError("No Ethernet Output Setup, Skipping Output");
 
-					// Ethernet Layer
-					int pixelWidth = _panelWidth;
-					int pixelHeight = _panelHeight;
-					int startChannel = _startChannel;
-
-					communicator.SendPacket(BuildFirstPacket(source, destination));
-					communicator.SendPacket(BuildSecondPacket(source, destination));
-					for (int i = 0; i < pixelHeight; i++)
-					{
-						int offset = pixelWidth * i;
-						communicator.SendPacket(BuildPixelPacket(source, destination, i, pixelWidth, buffer, startChannel, offset));
-					}
-				}
 			}
 			catch (Exception ex)
 			{
-				OnSendError(ex.Message);
+				//OnSendError(ex.Message);
 			}
 			_outputing = false;
+		}
+
+		Color getPixelColor( DisplayPixel pix, PixelBuffer buffer)
+		{
+			int r = 0;
+			int g = 0;
+			int b = 0;
+
+
+			if ((pix.PixelChan == 3) ||
+			 ((pix.PixelChan == 4) ))
+			{
+				if (pix.ColorOrder == "RGB" || pix.ColorOrder == "RGBW")
+				{
+					r = buffer[pix.Chan];
+					g = buffer[pix.Chan + 1];
+					b = buffer[pix.Chan + 2];
+				}
+				else if (pix.ColorOrder == "RBG")
+				{
+					r = buffer[pix.Chan];
+					g = buffer[pix.Chan + 2];
+					b = buffer[pix.Chan + 1];
+				}
+				else if (pix.ColorOrder == "GRB")
+				{
+					r = buffer[pix.Chan + 1];
+					g = buffer[pix.Chan];
+					b = buffer[pix.Chan + 2];
+				}
+				else if (pix.ColorOrder == "GBR")
+				{
+					r = buffer[pix.Chan + 2];
+					g = buffer[pix.Chan];
+					b = buffer[pix.Chan + 1];
+				}
+				else if (pix.ColorOrder == "BRG")
+				{
+					r = buffer[pix.Chan + 1];
+					g = buffer[pix.Chan + 2];
+					b = buffer[pix.Chan];
+				}
+				else if (pix.ColorOrder == "BGR")
+				{
+					r = buffer[pix.Chan + 2];
+					g = buffer[pix.Chan + 1];
+					b = buffer[pix.Chan];
+				}
+			}
+			else if (pix.PixelChan == 1)
+			{
+				if (pix.ColorOrder == "Red")
+				{
+					r = buffer[pix.Chan];
+					g = 0;
+					b = 0;
+				}
+				else if (pix.ColorOrder == "Green")
+				{
+					r = 0;
+					g = buffer[pix.Chan];
+					b = 0;
+				}
+				else if (pix.ColorOrder == "Blue")
+				{
+					r = 0;
+					g = 0;
+					b = buffer[pix.Chan];
+				}
+				else if (pix.ColorOrder == "White")
+				{
+					r = buffer[pix.Chan];
+					g = buffer[pix.Chan];
+					b = buffer[pix.Chan];
+				}
+			}
+
+			return Color.FromArgb(r, g, b);
+
+			return Color.Black;
 		}
 	}
 }

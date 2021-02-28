@@ -8,12 +8,14 @@ namespace VirtualDisplayPlugin
 {
 	public class DisplayPixel
 	{
-		public int x { get; set; }
-		public int y { get; set; }
+		public int X { get; set; }
+		public int Y { get; set; }
 		//public int z { get; set; }
-		public int ch { get; set; }
-		public int r { get; set; }
-		public int g { get; set; }
-		public int b { get; set; }
+		public int Chan { get; set; }
+		//public int R { get; set; }
+		//public int G { get; set; }
+		//public int B { get; set; }
+		public string ColorOrder { get; set; }
+		public byte PixelChan { get; set; }
 	}
 }
