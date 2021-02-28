@@ -14,8 +14,6 @@ namespace VirtualDisplayPlugin
 	{
 		private VirtualDisplayPlugin _plugin;
 
-		private Bitmap _displayPicture;
-
 		public StatusForm(VirtualDisplayPlugin plugin)
 		{
 			_plugin = plugin;
@@ -24,7 +22,8 @@ namespace VirtualDisplayPlugin
 
 		public void SetDisplayImage(Bitmap picture)
 		{
-			_displayPicture = picture;
+			pictureBox1.Image = picture;
+			Application.DoEvents();
 		}
 
 		private void StatusForm_Load(object sender, EventArgs e)
@@ -35,17 +34,6 @@ namespace VirtualDisplayPlugin
 		private void StatusForm_Shown(object sender, EventArgs e)
 		{
 			
-		}
-				
-		private void checkBoxTest_CheckedChanged(object sender, EventArgs e)
-		{
-
-		}
-
-        private void StatusForm_Paint(object sender, PaintEventArgs e)
-        {
-			e.Graphics.DrawImage(_displayPicture, 0, 0, _displayPicture.Width,
-				_displayPicture.Height);
 		}
     }
 }

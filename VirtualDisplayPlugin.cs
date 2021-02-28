@@ -22,11 +22,9 @@ namespace VirtualDisplayPlugin
 		int _pictureWidth = 0;
 		int _pictureHeight = 0;
 		List<DisplayPixel> _nodes = new List<DisplayPixel>();
-		
+		int _frame = 0;
 
 		public string _showDir = "";
-
-		void OnReloadDimensions() => SendReloadDimensions.Invoke(this, null);
 
 		public string GetMenuString()
 		{
@@ -58,7 +56,7 @@ namespace VirtualDisplayPlugin
 			return false;
 		}
 
-		public bool Start(string showDir)
+		public bool Start(string showDir, string url)
 		{
 			_showDir = showDir;
 
@@ -103,46 +101,67 @@ namespace VirtualDisplayPlugin
 		/// </summary>
 		private bool ReadSetting()
 		{
-			var path = _showDir + "//virtualdisplaymap";
-			if (!System.IO.File.Exists(path))
-				return false;
-			_nodes.Clear();
-			using (var rd = new StreamReader(path))
+			try
 			{
-				while (!rd.EndOfStream)
+				var path = _showDir + "//virtualdisplaymap";
+				if (!System.IO.File.Exists(path))
 				{
-					var splits = rd.ReadLine().Split(',');
-					if (splits.Length == 5)
+					MessageBox.Show("No File Found " + path);
+					return false;
+				}
+				_nodes.Clear();
+				using (var rd = new StreamReader(path))
+				{
+					while (!rd.EndOfStream)
 					{
-						try
+						var line = rd.ReadLine();
+						if (line.StartsWith("#"))
 						{
-							int x = Convert.ToInt32(splits[0]);
-							int y = Convert.ToInt32(splits[1]);
-							if (x > _pictureWidth)
-							{
-								_pictureWidth = x + 1;
-							}
-
-							if (y > _pictureHeight)
-							{
-								_pictureHeight = y + 1;
-							}
-							_nodes.Append(new DisplayPixel
-							{
-								X = x,
-								Y = y,
-								Chan = Convert.ToInt32(splits[2]),
-								PixelChan = Convert.ToByte(splits[3]),
-								ColorOrder = splits[4]
-							});
+							continue;
 						}
-						catch (Exception e)
-						{ }
+						var splits = line.Split(',');
+						if (splits.Length == 5)
+						{
+							try
+							{
+								int x = Convert.ToInt32(splits[0]);
+								int y = Convert.ToInt32(splits[1]);
+
+								if (x > _pictureWidth)
+								{
+									_pictureWidth = x + 1;
+								}
+
+								if (y > _pictureHeight)
+								{
+									_pictureHeight = y + 1;
+								}
+
+								_nodes.Add(new DisplayPixel(
+									x,
+									y,
+									Convert.ToInt32(splits[2]),
+									Convert.ToInt32(splits[3]),
+									splits[4]
+								));
+							}
+							catch (Exception e)
+							{
+							}
+						}
 					}
 				}
+				if (_nodes.Count==0)
+				{
+					MessageBox.Show("No Nodes Found");
+				}
+				return true;
 			}
-
-			return true;
+			catch (Exception ex)
+			{
+				MessageBox.Show(ex.Message);
+				return false;
+			}
 		}
 
 		/// <summary>
@@ -153,9 +172,16 @@ namespace VirtualDisplayPlugin
 			OutputToPanel(buffer);
 		}
 
-		public void FireEvent(string type, string parameters)
+		public bool FireEvent(string type, string parameters)
 		{
 			//MessageBox.Show(parameters);
+			return true;
+		}
+
+		public bool SendCommand(string command, string parameters, out string msg)
+		{
+			msg = "Demo plugin does not support commands.";
+			return false;
 		}
 
 		/// <summary>
@@ -165,7 +191,12 @@ namespace VirtualDisplayPlugin
 		{
 			if (_outputing)
 				return;
-
+			_frame++;
+			if (_frame < 20)
+			{
+				return;
+			}
+			_frame = 0;
 			_outputing = true;
 			try
 			{
@@ -176,101 +207,40 @@ namespace VirtualDisplayPlugin
 				}
 				
 				Bitmap display = new Bitmap(_pictureWidth, _pictureHeight);
+
+				int w = display.Width;
+				int h = display.Height;
+
+				for (int x = 0; x < w; x++)
+				{
+					for (int y = 0; y < h; y++)
+					{
+						display.SetPixel(x, y, Color.Black);
+					}
+				}
+
 				foreach (var node in _nodes)
 				{
 					Color color = getPixelColor(node, buffer);
-					display.SetPixel(node.X, node.Y, color);
+					display.SetPixel(node.X, _pictureHeight - node.Y, color);
 				}
-
+				//display.Save(_showDir + "//virtualdisplay.jpg");
 				_form.SetDisplayImage(display);
-				//OnSendError("No Ethernet Output Setup, Skipping Output");
-
 			}
-			catch (Exception ex)
+			catch (Exception )
 			{
-				//OnSendError(ex.Message);
+
 			}
 			_outputing = false;
 		}
 
 		Color getPixelColor( DisplayPixel pix, PixelBuffer buffer)
 		{
-			int r = 0;
-			int g = 0;
-			int b = 0;
-
-
-			if ((pix.PixelChan == 3) ||
-			 ((pix.PixelChan == 4) ))
-			{
-				if (pix.ColorOrder == "RGB" || pix.ColorOrder == "RGBW")
-				{
-					r = buffer[pix.Chan];
-					g = buffer[pix.Chan + 1];
-					b = buffer[pix.Chan + 2];
-				}
-				else if (pix.ColorOrder == "RBG")
-				{
-					r = buffer[pix.Chan];
-					g = buffer[pix.Chan + 2];
-					b = buffer[pix.Chan + 1];
-				}
-				else if (pix.ColorOrder == "GRB")
-				{
-					r = buffer[pix.Chan + 1];
-					g = buffer[pix.Chan];
-					b = buffer[pix.Chan + 2];
-				}
-				else if (pix.ColorOrder == "GBR")
-				{
-					r = buffer[pix.Chan + 2];
-					g = buffer[pix.Chan];
-					b = buffer[pix.Chan + 1];
-				}
-				else if (pix.ColorOrder == "BRG")
-				{
-					r = buffer[pix.Chan + 1];
-					g = buffer[pix.Chan + 2];
-					b = buffer[pix.Chan];
-				}
-				else if (pix.ColorOrder == "BGR")
-				{
-					r = buffer[pix.Chan + 2];
-					g = buffer[pix.Chan + 1];
-					b = buffer[pix.Chan];
-				}
-			}
-			else if (pix.PixelChan == 1)
-			{
-				if (pix.ColorOrder == "Red")
-				{
-					r = buffer[pix.Chan];
-					g = 0;
-					b = 0;
-				}
-				else if (pix.ColorOrder == "Green")
-				{
-					r = 0;
-					g = buffer[pix.Chan];
-					b = 0;
-				}
-				else if (pix.ColorOrder == "Blue")
-				{
-					r = 0;
-					g = 0;
-					b = buffer[pix.Chan];
-				}
-				else if (pix.ColorOrder == "White")
-				{
-					r = buffer[pix.Chan];
-					g = buffer[pix.Chan];
-					b = buffer[pix.Chan];
-				}
-			}
+			int r = buffer[pix.Chan + pix.R_Off];
+			int g = buffer[pix.Chan + pix.G_Off];
+			int b = buffer[pix.Chan + pix.B_Off];
 
 			return Color.FromArgb(r, g, b);
-
-			return Color.Black;
 		}
 	}
 }
